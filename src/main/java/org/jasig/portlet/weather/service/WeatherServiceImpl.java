@@ -29,6 +29,14 @@ import org.jasig.portlet.weather.domain.Weather;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
+
+import net.sf.ehcache.Cache;
+import net.sf.ehcache.Element;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * This service class completes the implementation of IWeatherService and makes
  * calls to IWeatherDao to retrieve weather information and find locations.
@@ -38,31 +46,75 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class WeatherServiceImpl extends AbstractWeatherService {
-	private IWeatherDao weatherDao = null; // Spring managed.
-
+	
+    private static final String ADDING_LOCATIONS_TO_CACHE_KEY = "Adding locations-to cache key: {}";
+    private static final String RETRIEVING_LOCATIONS_FROM_CACHE_KEY = "Retrieving locations-from cache key: {}";
+    private static final String ADDING_WEATHER_TO_CACHE_KEY = "Adding Weather-to cache key: {}";
+    private static final String RETRIEVING_WEATHER_FROM_CACHE_KEY = "Retrieving Weather-from cache, key: {}";
+    private IWeatherDao weatherDao = null; // Spring managed.
+    
+    @Resource(name="weatherSearchCache")
+    private Cache weatherSearchCache;
+    
+    @Resource(name="weatherDataCache")
+    private Cache weatherDataCache;
+    private final Logger logger = LoggerFactory.getLogger(getClass());
     public Collection<Location> find(String location) {
-		//no location is set, don't try to search for anything
-		if (StringUtils.isBlank(location)) {
-			return null;
-		}
-		return weatherDao.find(location);
-	}
+        //no location is set, don't try to search for anything
+        if (StringUtils.isBlank(location)) {
+            return null;
+        }
 
-	/* (non-Javadoc)
+        Element cachedElement = this.weatherSearchCache.get(location);
+        if (cachedElement != null) {
+            logDebugInformation(RETRIEVING_LOCATIONS_FROM_CACHE_KEY, location, cachedElement);
+            @SuppressWarnings("unchecked")
+            final Collection<Location> locations = (Collection<Location>) cachedElement.getValue();
+            return locations;
+        } else {
+            final Collection<Location> locations = weatherDao.find(location);
+            cachedElement = new Element(location, locations);
+            logDebugInformation(ADDING_LOCATIONS_TO_CACHE_KEY, location, cachedElement);
+            this.weatherSearchCache.put(cachedElement);
+            return locations;
+        }
+    }
+
+    /* (non-Javadoc)
      * @see org.jasig.portlet.weather.service.IWeatherService#getWeather(java.lang.String, org.jasig.portlet.weather.TemperatureUnit)
      */
     public Weather getWeather(String locationCode, TemperatureUnit unit) {
-		//no locationCode is set, don't try to retrieve anything
-	    if (StringUtils.isBlank(locationCode)) {
-			return null;
-		}
-		return weatherDao.getWeather(locationCode, unit);
-	}
-	
-	@Autowired
-	public void setWeatherDao(IWeatherDao weatherDao) {
-		this.weatherDao = weatherDao;
-	}
+        //no locationCode is set, don't try to retrieve anything
+        if (StringUtils.isBlank(locationCode)) {
+            return null;
+        }
+        String key = new StringBuffer().append(locationCode).append("_").append(unit.toString()).toString();
+        Element cachedElement = this.weatherDataCache.get(key);
+        if (cachedElement != null) {
+            logDebugInformation(RETRIEVING_WEATHER_FROM_CACHE_KEY, key, cachedElement);
+            @SuppressWarnings("unchecked")
+            final Weather weather = (Weather) cachedElement.getValue();
+            return weather;
+        } else {
+            final Weather weather = weatherDao.getWeather(locationCode, unit);
+            cachedElement = new Element(key, weather);
+            logDebugInformation(ADDING_WEATHER_TO_CACHE_KEY, key, cachedElement);
+            this.weatherDataCache.put(cachedElement);
+            return weather;
+        }
+    }
+
+    private void logDebugInformation(String message, String value, Element cachedElement) {
+        if (logger.isDebugEnabled()) {
+        	logger.debug(message, value);
+        	logger.debug(cachedElement.getValue().toString());
+        }
+    }
+
+    @Autowired
+    public void setWeatherDao(IWeatherDao weatherDao) {
+        this.weatherDao = weatherDao;
+    }
 
     public String getWeatherProviderLink() {
         return this.weatherDao.getWeatherProviderLink();
@@ -70,5 +122,13 @@ public class WeatherServiceImpl extends AbstractWeatherService {
 
     public String getWeatherProviderName() {
         return this.weatherDao.getWeatherProviderName();
+    }
+
+    public void setWeatherSearchCache(Cache weatherSearchCache) {
+        this.weatherSearchCache = weatherSearchCache;
+    }
+
+    public void setWeatherDataCache(Cache weatherDataCache) {
+        this.weatherDataCache = weatherDataCache;
     }
 }

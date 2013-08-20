@@ -42,6 +42,12 @@
         <property name="configLocation" value="classpath:/ehcache.xml" />
     </bean>
 
+    <bean id="weatherDataCache" class="org.springframework.cache.ehcache.EhCacheFactoryBean"
+        p:cacheManager-ref="cacheManager" p:cacheName="weatherDataCache" />
+
+    <bean id="weatherSearchCache" class="org.springframework.cache.ehcache.EhCacheFactoryBean"
+        p:cacheManager-ref="cacheManager" p:cacheName="weatherSearchCache" />
+
     <ehcache-spring:annotation-driven cache-manager="cacheManager" default-cache-key-generator="stringCacheKeyGenerator"/>
     <bean id="stringCacheKeyGenerator" class="com.googlecode.ehcache.annotations.key.StringCacheKeyGenerator" />
 
@@ -72,7 +78,6 @@
 
     <lang:groovy id="locationParsingService"
         script-source="classpath:org/jasig/portlet/weather/dao/yahoo/YahooLocationParsingServiceImpl.groovy"/>
-
 
 	<!-- messages.propreties Configuration -->
 	<bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
